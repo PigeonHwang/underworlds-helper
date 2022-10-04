@@ -1,0 +1,20 @@
+syntax = "proto3";
+package com.example.proto;
+
+//option java_package = "com.example.demo";
+//option java_outer_classname = "MessageProtos";
+
+option java_multiple_files = true;
+
+message Message {
+  string msgType = 1;
+  oneof data_oneof {
+    string data = 2;
+    User user = 3;
+  }
+}
+
+message User {
+  int32 id = 1;
+  string name = 2;
+}
