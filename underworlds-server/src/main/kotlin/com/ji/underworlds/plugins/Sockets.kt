@@ -16,7 +16,7 @@ import java.lang.Exception
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
-private var sessions = ConcurrentHashMap<WebSocketServerSession, Player>()
+private var players = ConcurrentHashMap<WebSocketServerSession, Player>()
 private var games = ConcurrentHashMap<String, Game>()
 private var uids = AtomicLong(0)
 
@@ -35,8 +35,8 @@ fun Application.configureSockets() {
             try {
                 for(frame in incoming) {
                     if(frame is Frame.Text) {
-                        if(sessions[this] != null) {
-                            player = sessions[this]!!
+                        if(players[this] != null) {
+                            player = players[this]!!
                             if(games[player.gameCode] != null) {
                                 game = games[player.gameCode]!!
                             }
@@ -45,32 +45,36 @@ fun Application.configureSockets() {
                         val json = ObjectMapper().readTree(frame.readText())
 
                         when(json.get("type").asText()) {
+                            /* join player */
                             "join" -> {
+                                /* set player info */
                                 player.id = uids.getAndIncrement()
-                                player.session = this
                                 player.playerName = json.get("userName").asText()
                                 player.gameCode = json.get("gameCode").asText()
+                                player.session = this
+                                players[this] = player
 
-                                if(games[player.gameCode] != null) {
+                                if(games[player.gameCode] != null) {  // join exist game
                                     games[player.gameCode]!!.playerList.add(player)
-                                    games[player.gameCode]!!.playerSequence.add(player)
-                                } else {
+                                } else { // create new game
                                     games[player.gameCode] = Game()
                                     games[player.gameCode]!!.playerList.add(player)
+                                    player.isAdmin = true
                                 }
-                                sessions[this] = player
+
+                                /* get player list */
                                 emit(this, Message("players", games[player.gameCode]!!.playerList))
 
+                                /* send new player info */
                                 GlobalScope.launch {
-                                    sessions.forEach {
+                                    players.forEach {
                                         launch {
-                                            if(it.key != player.session && it.value.gameCode == player.gameCode) {
+                                            if(it.key != this@webSocket && it.value.gameCode == player.gameCode) {
                                                 emit(it.key, Message("join", player))
                                             }
                                         }
                                     }
                                 }
-                                //broadcast(player.gameCode, Message("join", player.playerName))
                             }
                             "start" -> {
                                 game.isActivationStep = true
@@ -82,18 +86,20 @@ fun Application.configureSockets() {
 
                             }
                             "end_activation_step" -> {
-                                player.activation += 1
-                                if(player.activation == 4 && player.gameCode == game.playerSequence.last().gameCode) {
+                                player.activationPhase += 1
+                                updatePlayerState(player.gameCode)
+
+                                /*if(player.activationPhase == 4 && player.gameCode == game.playerSequence.last().gameCode) {
                                     game.round += 1
                                     game.playerList.forEach {
-                                        it.activation = 0
+                                        it.activationPhase = 0
                                     }
                                     broadcast(player.gameCode, Message("end_phase", ""))
-                                }
+                                }*/
                             }
                             "end_power_step" -> {
                                 GlobalScope.launch {
-                                    sessions.forEach {
+                                    players.forEach {
                                         launch {
                                             if(it.key != this && it.value.gameCode == player.gameCode) emit(it.key, Message("join", player.playerName))
                                         }
@@ -106,16 +112,14 @@ fun Application.configureSockets() {
             } catch(e: Exception) {
                 println(e.localizedMessage)
             } finally {
-                sessions -= this
-                game.playerList
-                game.playerSequence
+                players -= this
 
-                sessions.forEach {
+                players.forEach {
                     println(it.value.playerName)
                 }
 
                 GlobalScope.launch {
-                    sessions.forEach {
+                    players.forEach {
                         launch {
                             if(it.value.gameCode == player.gameCode) emit(it.key, Message("left", player))
                         }
@@ -131,7 +135,7 @@ suspend fun emit(session: WebSocketServerSession, message: Message) {
 }
 fun broadcast(gameCode: String, message: Message) {
     GlobalScope.launch {
-        sessions.forEach {
+        players.forEach {
             launch {
                 if(it.value.gameCode == gameCode) emit(it.key, message)
             }
@@ -140,4 +144,13 @@ fun broadcast(gameCode: String, message: Message) {
 }
 fun broadcastToOthers(session: WebSocketServerSession, gameCode: String, message: Message) {
 
+}
+fun updatePlayerState(gameCode: String) {
+    GlobalScope.launch {
+        games[gameCode]!!.playerList.forEach {
+            launch {
+                emit(it.session, Message("update_player_state", games[gameCode]!!.playerList))
+            }
+        }
+    }
 }
