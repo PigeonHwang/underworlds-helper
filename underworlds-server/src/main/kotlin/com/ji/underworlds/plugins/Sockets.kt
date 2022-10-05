@@ -51,19 +51,17 @@ fun Application.configureSockets() {
                                 player.id = uids.getAndIncrement()
                                 player.playerName = json.get("userName").asText()
                                 player.gameCode = json.get("gameCode").asText()
-                                player.session = this
-                                players[this] = player
 
                                 if(games[player.gameCode] != null) {  // join exist game
-                                    games[player.gameCode]!!.playerList.add(player)
+                                    games[player.gameCode]!!.players[this] = player
                                 } else { // create new game
                                     games[player.gameCode] = Game()
-                                    games[player.gameCode]!!.playerList.add(player)
+                                    games[player.gameCode]!!.players[this] = player
                                     player.isAdmin = true
                                 }
 
                                 /* get player list */
-                                emit(this, Message("players", games[player.gameCode]!!.playerList))
+                                emit(this, Message("players", games[player.gameCode]!!.players))
 
                                 /* send new player info */
                                 GlobalScope.launch {
@@ -147,9 +145,9 @@ fun broadcastToOthers(session: WebSocketServerSession, gameCode: String, message
 }
 fun updatePlayerState(gameCode: String) {
     GlobalScope.launch {
-        games[gameCode]!!.playerList.forEach {
+        games[gameCode]!!.players.forEach {
             launch {
-                emit(it.session, Message("update_player_state", games[gameCode]!!.playerList))
+                emit(players.get, Message("update_player_state", games[gameCode]!!.playerList))
             }
         }
     }

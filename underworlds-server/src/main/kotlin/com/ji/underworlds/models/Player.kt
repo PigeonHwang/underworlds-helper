@@ -4,7 +4,6 @@ import io.ktor.server.websocket.*
 
 class Player {
     var id: Long = 0
-    lateinit var session: WebSocketServerSession
     var playerName = "anonymous"
     var gameCode = "0000"
     var order = 0
