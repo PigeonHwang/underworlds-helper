@@ -84,7 +84,12 @@ fun Application.configureSockets() {
 
                             }
                             "end_activation_step" -> {
-                                player.activationPhase += 1
+                                player.activated = false
+                                game.players.forEach {
+                                    if(it.value.priority == player.priority + 1) {
+
+                                    }
+                                }
                                 updatePlayerState(player.gameCode)
 
                                 /*if(player.activationPhase == 4 && player.gameCode == game.playerSequence.last().gameCode) {
@@ -147,7 +152,7 @@ fun updatePlayerState(gameCode: String) {
     GlobalScope.launch {
         games[gameCode]!!.players.forEach {
             launch {
-                emit(players.get, Message("update_player_state", games[gameCode]!!.playerList))
+                emit(it.key, Message("update_player_state", games[gameCode]!!.players))
             }
         }
     }
