@@ -88,8 +88,18 @@ fun Application.configureSockets() {
 
                             }
                             "end_activation_step" -> {
+<<<<<<< HEAD
                                 player.activationPhase += 1
                                 updateState(player.gameCode)
+=======
+                                player.activated = false
+                                game.players.forEach {
+                                    if(it.value.priority == player.priority + 1) {
+
+                                    }
+                                }
+                                updatePlayerState(player.gameCode)
+>>>>>>> 24e75017a86238a6ad73b65a709f65417efe34dd
 
                                 /*if(player.activationPhase == 4 && player.gameCode == game.playerSequence.last().gameCode) {
                                     game.round += 1
@@ -151,7 +161,11 @@ fun updateState(gameCode: String) {
     GlobalScope.launch {
         games[gameCode]!!.players.forEach {
             launch {
+<<<<<<< HEAD
                 emit(it.session, Message("update_player_state", games[gameCode]!!))
+=======
+                emit(it.key, Message("update_player_state", games[gameCode]!!.players))
+>>>>>>> 24e75017a86238a6ad73b65a709f65417efe34dd
             }
         }
     }
