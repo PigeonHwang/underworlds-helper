@@ -61,14 +61,15 @@ let ws = new WebSocket('ws://0.0.0.0:8080/uw')
 
 ws.onopen = () => {
     let name: string = "";
-    let sessionCode: string = "";
+    let gameCode: string = "";
     while (name == "") { // @ts-ignore
         name = prompt("Enter your name");
     }
-    while (sessionCode == "") { // @ts-ignore
-        sessionCode = prompt("Enter your session code");
+    while (gameCode == "") { // @ts-ignore
+        gameCode = prompt("Enter your session code");
     }
-    ws.send(JSON.stringify({type:"join", userName: name, sessionCode: sessionCode}));
+    sendMessage("join", JSON.stringify({playerName: name, gameCode: gameCode}))
+    //ws.send(JSON.stringify({type:"join", playerName: name, gameCode: gameCode}));
 }
 
 ws.onmessage = async (ev) => {
@@ -79,12 +80,15 @@ ws.onmessage = async (ev) => {
         addPlayer(msg.data)
     }
     else if(msg.type == "players") {
-        msg.data.forEach(function(el) { addPlayer(el); });
+        msg.data.prototype.forEach(function(el) { addPlayer(el); });
     }
     else if(msg.type == "left") {
         console.log(msg.data.id)
         $("#player-"+msg.data.id).remove();
         $("#activation-"+msg.data.id).remove();
+    }
+    else if(msg.type == "end_activation_step") {
+        console.log(msg.data)
     }
     else if(msg.type == "end_phase") {
         endPhase()

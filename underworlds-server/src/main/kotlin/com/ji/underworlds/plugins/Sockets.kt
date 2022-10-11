@@ -32,9 +32,11 @@ fun Application.configureSockets() {
         webSocket("/uw") { // websocketSession
             var player = Player()
             var game = Game()
+
             try {
                 for(frame in incoming) {
                     if(frame is Frame.Text) {
+
                         if(players[this] != null) {
                             player = players[this]!!
                             if(games[player.gameCode] != null) {
@@ -42,26 +44,28 @@ fun Application.configureSockets() {
                             }
                         }
 
-                        val json = ObjectMapper().readTree(frame.readText())
+                        //val json = ObjectMapper().readTree(frame.readText())
 
-                        when(json.get("type").asText()) {
+                        val message = ObjectMapper().readValue(frame.readText(), Message::class.java)
+
+                        when(message.type) {
                             /* join player */
                             "join" -> {
                                 /* set player info */
+                                player = ObjectMapper().readValue(message.data.toString(), Player::class.java)
                                 player.id = uids.getAndIncrement()
-                                player.playerName = json.get("userName").asText()
-                                player.gameCode = json.get("gameCode").asText()
 
                                 if(games[player.gameCode] != null) {  // join exist game
-                                    games[player.gameCode]!!.players[this] = player
+                                    games[player.gameCode]!!.players.add(player)
                                 } else { // create new game
                                     games[player.gameCode] = Game()
-                                    games[player.gameCode]!!.players[this] = player
+                                    games[player.gameCode]!!.players.add(player)
                                     player.isAdmin = true
                                 }
 
+                                println(ObjectMapper().writeValueAsString(player))
                                 /* get player list */
-                                emit(this, Message("players", games[player.gameCode]!!.players))
+                                //emit(this, Message("players", games[player.gameCode]!!.players))
 
                                 /* send new player info */
                                 GlobalScope.launch {
@@ -85,7 +89,7 @@ fun Application.configureSockets() {
                             }
                             "end_activation_step" -> {
                                 player.activationPhase += 1
-                                updatePlayerState(player.gameCode)
+                                updateState(player.gameCode)
 
                                 /*if(player.activationPhase == 4 && player.gameCode == game.playerSequence.last().gameCode) {
                                     game.round += 1
@@ -129,7 +133,7 @@ fun Application.configureSockets() {
 }
 
 suspend fun emit(session: WebSocketServerSession, message: Message) {
-    session.send(jacksonObjectMapper().writeValueAsString(message))
+    session.send(ObjectMapper().writeValueAsString(message))
 }
 fun broadcast(gameCode: String, message: Message) {
     GlobalScope.launch {
@@ -143,11 +147,11 @@ fun broadcast(gameCode: String, message: Message) {
 fun broadcastToOthers(session: WebSocketServerSession, gameCode: String, message: Message) {
 
 }
-fun updatePlayerState(gameCode: String) {
+fun updateState(gameCode: String) {
     GlobalScope.launch {
         games[gameCode]!!.players.forEach {
             launch {
-                emit(players.get, Message("update_player_state", games[gameCode]!!.playerList))
+                emit(it.session, Message("update_player_state", games[gameCode]!!))
             }
         }
     }
