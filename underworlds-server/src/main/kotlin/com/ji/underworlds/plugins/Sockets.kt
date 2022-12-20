@@ -1,10 +1,10 @@
 package com.ji.underworlds.plugins
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.ji.underworlds.models.Game
+import com.ji.underworlds.models.GameSession
 import com.ji.underworlds.models.Message
 import com.ji.underworlds.models.Player
+import com.ji.underworlds.services.GameSessionService
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
@@ -15,10 +15,6 @@ import kotlinx.coroutines.launch
 import java.lang.Exception
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
-
-private var players = ConcurrentHashMap<WebSocketServerSession, Player>()
-private var games = ConcurrentHashMap<String, Game>()
-private var uids = AtomicLong(0)
 
 fun Application.configureSockets() {
     install(WebSockets) {
@@ -31,92 +27,55 @@ fun Application.configureSockets() {
     routing {
         webSocket("/uw") { // websocketSession
             var player = Player()
-            var game = Game()
+            var game = GameSession()
 
             try {
                 for(frame in incoming) {
-                    if(frame is Frame.Text) {
+                    val text = frame as Frame.Text
 
-                        if(players[this] != null) {
-                            player = players[this]!!
-                            if(games[player.gameCode] != null) {
-                                game = games[player.gameCode]!!
+                    val message = ObjectMapper().readValue(text.readText(), Message::class.java)
+
+                    when(message.type) {
+                        /* join player */
+                        "join" -> {
+                            /* set player info */
+                            player = ObjectMapper().readValue(message.data.toString(), Player::class.java)
+                            player.id = uids.getAndIncrement()
+
+                            if(games[player.gameCode] != null) {  // join exist game
+                                games[player.gameCode]!!.players.add(player)
+                            } else { // create new game
+                                games[player.gameCode!!] = GameSession()
+                                games[player.gameCode]!!.players.add(player)
+                                player.isAdmin = true
+                            }
+
+                            /* send new player info */
+                            GlobalScope.launch {
+                                players.forEach {
+                                    launch {
+                                        if(it.key != this@webSocket && it.value.gameCode == player.gameCode) {
+                                            emit(it.key, Message("join", player))
+                                        }
+                                    }
+                                }
                             }
                         }
+                        "start" -> {
 
-                        //val json = ObjectMapper().readTree(frame.readText())
+                        }
+                        "get_glory_point" -> {
 
-                        val message = ObjectMapper().readValue(frame.readText(), Message::class.java)
+                        }
+                        "use_glory_point" -> {
 
-                        when(message.type) {
-                            /* join player */
-                            "join" -> {
-                                /* set player info */
-                                player = ObjectMapper().readValue(message.data.toString(), Player::class.java)
-                                player.id = uids.getAndIncrement()
+                        }
+                        "end_activation_step" -> {
 
-                                if(games[player.gameCode] != null) {  // join exist game
-                                    games[player.gameCode]!!.players.add(player)
-                                } else { // create new game
-                                    games[player.gameCode] = Game()
-                                    games[player.gameCode]!!.players.add(player)
-                                    player.isAdmin = true
-                                }
+                        }
+                        "end_power_step" -> {
+                            GlobalScope.launch {
 
-                                println(ObjectMapper().writeValueAsString(player))
-                                /* get player list */
-                                //emit(this, Message("players", games[player.gameCode]!!.players))
-
-                                /* send new player info */
-                                GlobalScope.launch {
-                                    players.forEach {
-                                        launch {
-                                            if(it.key != this@webSocket && it.value.gameCode == player.gameCode) {
-                                                emit(it.key, Message("join", player))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            "start" -> {
-                                game.isActivationStep = true
-                            }
-                            "get_glory_point" -> {
-
-                            }
-                            "use_glory_point" -> {
-
-                            }
-                            "end_activation_step" -> {
-<<<<<<< HEAD
-                                player.activationPhase += 1
-                                updateState(player.gameCode)
-=======
-                                player.activated = false
-                                game.players.forEach {
-                                    if(it.value.priority == player.priority + 1) {
-
-                                    }
-                                }
-                                updatePlayerState(player.gameCode)
->>>>>>> 24e75017a86238a6ad73b65a709f65417efe34dd
-
-                                /*if(player.activationPhase == 4 && player.gameCode == game.playerSequence.last().gameCode) {
-                                    game.round += 1
-                                    game.playerList.forEach {
-                                        it.activationPhase = 0
-                                    }
-                                    broadcast(player.gameCode, Message("end_phase", ""))
-                                }*/
-                            }
-                            "end_power_step" -> {
-                                GlobalScope.launch {
-                                    players.forEach {
-                                        launch {
-                                            if(it.key != this && it.value.gameCode == player.gameCode) emit(it.key, Message("join", player.playerName))
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -161,11 +120,7 @@ fun updateState(gameCode: String) {
     GlobalScope.launch {
         games[gameCode]!!.players.forEach {
             launch {
-<<<<<<< HEAD
-                emit(it.session, Message("update_player_state", games[gameCode]!!))
-=======
-                emit(it.key, Message("update_player_state", games[gameCode]!!.players))
->>>>>>> 24e75017a86238a6ad73b65a709f65417efe34dd
+                emit(it.session!!, Message("update_player_state", games[gameCode]!!))
             }
         }
     }
