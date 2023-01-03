@@ -1,0 +1,65 @@
+<script>
+    let name
+    let socket = new WebSocket("ws://localhost:8080/uw")
+    class Message {
+        type
+        data
+    }
+    const Action = {
+        CREATE_PLAYER: "create_player",
+        CREATE_SESSION: "create_session",
+        JOIN: "join"
+    }
+
+    socket.onopen = function(e) {
+        name = prompt("enter your name")
+        createPlayer()
+    }
+
+    socket.onmessage = function(event) {
+        let msg = JSON.parse(event.data)
+        if(msg.type === "create_player") {
+            console.table(msg.data)
+        } else if(msg.type === "create_session") {
+            updatePlayerList(msg.data.playerList)
+        } else if(msg.type === "join") {
+            updatePlayerList(msg.data.playerList)
+        }
+    }
+
+    function createPlayer() {
+        let msg = new Message
+        msg.type = Action.CREATE_PLAYER
+        msg.data = name
+        socket.send(JSON.stringify(msg))
+    }
+
+    function createSession() {
+        let msg = new Message()
+        msg.type = Action.CREATE_SESSION
+        socket.send(JSON.stringify(msg))
+    }
+
+    function joinSession() {
+        let msg = new Message()
+        msg.type = Action.JOIN
+        msg.data = document.getElementById("session_code").value
+        socket.send(JSON.stringify(msg))
+    }
+
+    function updatePlayerList(input) {
+        document.getElementById("player_list").innerText = ""
+        input.forEach(function(player) {
+            document.getElementById("player_list").append(player.name)
+        })
+    }
+</script>
+
+<div id="player_list" style="width: 600px; height: 300px"></div>
+<input type=text name="chatBox">
+<input type="button" id="sendButton" value="send" onclick="">
+<br>
+<input type="button" id="create_session_Button" value="create session" onclick="createSession()">
+<br>
+<input type=text id="session_code" name="session_code">
+<input type="button" id="join_session_Button" value="join session" onclick="joinSession()">

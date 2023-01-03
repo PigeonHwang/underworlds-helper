@@ -4,17 +4,23 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.ji.underworlds.models.GameSession
 import com.ji.underworlds.models.Message
 import com.ji.underworlds.models.Player
+import com.ji.underworlds.models.PlayerInput
 import com.ji.underworlds.services.GameSessionService
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import java.time.Duration
 import io.ktor.server.application.*
+import io.ktor.server.http.content.*
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.lang.Exception
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
+
+val gameSessionService = GameSessionService()
+val gameSessionList = mutableListOf<GameSession>()
+val playerList = mutableListOf<Player>()
+private var uids = AtomicInteger(0)
 
 fun Application.configureSockets() {
     install(WebSockets) {
@@ -26,39 +32,42 @@ fun Application.configureSockets() {
 
     routing {
         webSocket("/uw") { // websocketSession
-            var player = Player()
-            var game = GameSession()
-
             try {
+                val player = Player(id = Int.MAX_VALUE - uids.getAndIncrement(), webSocketServerSession = this)
+                val gameSession: GameSession? = null
+
                 for(frame in incoming) {
                     val text = frame as Frame.Text
-
                     val message = ObjectMapper().readValue(text.readText(), Message::class.java)
 
                     when(message.type) {
+                        "create_player" -> {
+                            player.name = message.data.toString()
+                            emit(this, Message(type = "create_player", data = player))
+                        }
+                        "create_session" -> {
+                            val gameSession = gameSessionService.createGameSession(gameSessionList, Int.MAX_VALUE - uids.getAndIncrement()).setAdmin(player)
+                            gameSession.addPlayer(player)
+                            emit(this, Message("create_session", gameSession))
+                        }
                         /* join player */
                         "join" -> {
                             /* set player info */
-                            player = ObjectMapper().readValue(message.data.toString(), Player::class.java)
-                            player.id = uids.getAndIncrement()
-
-                            if(games[player.gameCode] != null) {  // join exist game
-                                games[player.gameCode]!!.players.add(player)
-                            } else { // create new game
-                                games[player.gameCode!!] = GameSession()
-                                games[player.gameCode]!!.players.add(player)
-                                player.isAdmin = true
-                            }
-
+                            val gameSession = gameSessionList.firstOrNull { it.id == message.data.toString().toInt() }
+                            gameSession?.addPlayer(player)
                             /* send new player info */
                             GlobalScope.launch {
-                                players.forEach {
+                                gameSession?.playerList?.forEach {
                                     launch {
-                                        if(it.key != this@webSocket && it.value.gameCode == player.gameCode) {
-                                            emit(it.key, Message("join", player))
-                                        }
+                                        emit(it.webSocketServerSession, Message("join", gameSession))
+                                        /*if(it.webSocketServerSession != this@webSocket) {
+                                            emit(it.webSocketServerSession, Message("join", gameSession))
+                                        }*/
                                     }
                                 }
+                            }
+                            gameSession?.playerList?.forEach {
+                                println(it.name)
                             }
                         }
                         "start" -> {
@@ -83,20 +92,21 @@ fun Application.configureSockets() {
             } catch(e: Exception) {
                 println(e.localizedMessage)
             } finally {
-                players -= this
-
-                players.forEach {
-                    println(it.value.playerName)
-                }
+                playerList.removeIf { it.webSocketServerSession == this }
+                gameSessionList.forEach { it.removePlayer(PlayerInput(websocketServerSession = this)) }
 
                 GlobalScope.launch {
-                    players.forEach {
+                    gameSessionList.forEach {
                         launch {
-                            if(it.value.gameCode == player.gameCode) emit(it.key, Message("left", player))
+                            //if(it.value.gameCode == player.gameCode) emit(it.key, Message("left", player))
                         }
                     }
                 }
             }
+        }
+        static {
+            defaultResource("index.html", "web")
+            resources("web")
         }
     }
 }
@@ -104,7 +114,7 @@ fun Application.configureSockets() {
 suspend fun emit(session: WebSocketServerSession, message: Message) {
     session.send(ObjectMapper().writeValueAsString(message))
 }
-fun broadcast(gameCode: String, message: Message) {
+/*fun broadcast(gameCode: String, message: Message) {
     GlobalScope.launch {
         players.forEach {
             launch {
@@ -124,4 +134,4 @@ fun updateState(gameCode: String) {
             }
         }
     }
-}
+}*/
